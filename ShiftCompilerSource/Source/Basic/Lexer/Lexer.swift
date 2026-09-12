@@ -1,45 +1,91 @@
-//
-// Lexer.swift
-// Shift
-//
-
-final class Lexer {
-
+public final class Lexer {
     private let source: String
-    private let characters: [Character]
+    private var characters: [Character]
 
     private var index: Int = 0
 
     private var line: Int = 1
     private var column: Int = 1
 
-    init(
-        source: String
-    ) {
+    private var tokens: [Token] = []
+
+    private static let keywords: [String: TokenKind] = [
+        // Declarations
+        "let": .letKeyword,
+        "var": .varKeyword,
+        "func": .funcKeyword,
+        "struct": .structKeyword,
+        "class": .classKeyword,
+        "enum": .enumKeyword,
+        "protocol": .protocolKeyword,
+        "extension": .extensionKeyword,
+
+        // Modifiers
+        "public": .publicKeyword,
+        "private": .privateKeyword,
+        "internal": .internalKeyword,
+        "static": .staticKeyword,
+        "mutating": .mutatingKeyword,
+        "unsafe": .unsafeKeyword,
+
+        // Statements
+        "break": .breakKeyword,
+        "continue": .continueKeyword,
+        "return": .returnKeyword,
+        "if": .ifKeyword,
+        "else": .elseKeyword,
+        "while": .whileKeyword,
+        "for": .forKeyword,
+        "switch": .switchKeyword,
+        "case": .caseKeyword,
+        "default": .defaultKeyword,
+        "in": .inKeyword,
+
+        // Built-in types
+        "Int": .intKeyword,
+        "UInt": .uintKeyword,
+        "Int8": .int8Keyword,
+        "Int16": .int16Keyword,
+        "Int32": .int32Keyword,
+        "Int64": .int64Keyword,
+
+        "UInt8": .uint8Keyword,
+        "UInt16": .uint16Keyword,
+        "UInt32": .uint32Keyword,
+        "UInt64": .uint64Keyword,
+
+        "Float": .floatKeyword,
+        "Double": .doubleKeyword,
+        "Bool": .boolKeyword,
+        "String": .stringKeyword,
+        "Void": .voidKeyword,
+
+        // Boolean literals
+        "true": .booleanLiteral,
+        "false": .booleanLiteral
+    ]
+
+    public init(source: String) {
         self.source = source
         self.characters = Array(source)
     }
 
     // MARK: - Entry Point
 
-    func tokenize() throws -> [Token] {
-
-        var tokens: [Token] = []
+    public func tokenize() throws -> [Token] {
+        var result: [Token] = []
 
         while !isAtEnd {
-
             skipWhitespaceAndComments()
 
             if isAtEnd {
                 break
             }
 
-            tokens.append(
-                try lexToken()
-            )
+            result.append(try lexToken())
         }
 
-        tokens.append(
+        result.append(
             Token(
                 kind: .endOfFile,
                 lexeme: "",
@@ -47,198 +93,121 @@ final class Lexer {
             )
         )
 
-        return tokens
+        tokens = result
+        return result
     }
 
-    // MARK: - Token
+    public func lex() throws -> [Token] {
+        try tokenize()
+    }
+
+    // MARK: - Tokenization
 
     private func lexToken() throws -> Token {
-
         let location = currentLocation
-        let character = current
 
-        // Identifier / keyword.
+        let character = currentCharacter
+
         if isIdentifierStart(character) {
-            return lexIdentifierOrKeyword(
-                location: location
-            )
+            return lexIdentifierOrKeyword()
         }
 
-        // Numeric literal.
-        if character.isNumber {
-            return try lexNumber(
-                location: location
-            )
+        if isASCIIDigit(character) {
+            return try lexNumber()
         }
 
         switch character {
+        case "\"":
+            return try lexString()
 
-        // MARK: Punctuation
+        case "'":
+            return try lexCharacter()
+
+        case ":":
+            return makeSingleCharacterToken(
+                .colon
+            )
+
+        case "=":
+            return try lexEqual()
 
         case "(":
-            advance()
-
-            return makeToken(
-                .leftParenthesis,
-                "(",
-                location
+            return makeSingleCharacterToken(
+                .leftParenthesis
             )
 
         case ")":
-            advance()
-
-            return makeToken(
-                .rightParenthesis,
-                ")",
-                location
-            )
-
-        case "{":
-            advance()
-
-            return makeToken(
-                .leftBrace,
-                "{",
-                location
-            )
-
-        case "}":
-            advance()
-
-            return makeToken(
-                .rightBrace,
-                "}",
-                location
+            return makeSingleCharacterToken(
+                .rightParenthesis
             )
 
         case "[":
-            advance()
-
-            return makeToken(
-                .leftBracket,
-                "[",
-                location
+            return makeSingleCharacterToken(
+                .leftBracket
             )
 
         case "]":
-            advance()
-
-            return makeToken(
-                .rightBracket,
-                "]",
-                location
+            return makeSingleCharacterToken(
+                .rightBracket
             )
 
-        case ":":
-            advance()
+        case "{":
+            return makeSingleCharacterToken(
+                .leftBrace
+            )
 
-            return makeToken(
-                .colon,
-                ":",
-                location
+        case "}":
+            return makeSingleCharacterToken(
+                .rightBrace
             )
 
         case ",":
-            advance()
-
-            return makeToken(
-                .comma,
-                ",",
-                location
+            return makeSingleCharacterToken(
+                .comma
             )
 
         case ".":
-            advance()
-
-            return makeToken(
-                .dot,
-                ".",
-                location
-            )
-
-        // MARK: Literals
-
-        case "\"":
-            return try lexStringLiteral(
-                location: location
-            )
-
-        case "'":
-            return try lexCharacterLiteral(
-                location: location
-            )
-
-        // MARK: Operators
-
-        case "=":
-            return lexEqualOperator(
-                location: location
-            )
-
-        case "!":
-            return lexBangOperator(
-                location: location
-            )
-
-        case "<":
-            return lexLessOperator(
-                location: location
-            )
-
-        case ">":
-            return lexGreaterOperator(
-                location: location
+            return makeSingleCharacterToken(
+                .dot
             )
 
         case "+":
-            return try lexPlusOperator(
-                location: location
-            )
+            return try lexPlus()
 
         case "-":
-            return try lexMinusOperator(
-                location: location
-            )
+            return try lexMinus()
 
         case "*":
-            return try lexSingleCharacterOperator(
-                kind: .star,
-                location: location
-            )
+            return try lexStar()
 
         case "/":
-            return try lexSingleCharacterOperator(
-                kind: .slash,
-                location: location
-            )
+            return try lexSlash()
 
         case "%":
-            return try lexSingleCharacterOperator(
-                kind: .percent,
-                location: location
-            )
+            return try lexPercent()
+
+        case "!":
+            return try lexExclamation()
+
+        case "<":
+            return try lexLess()
+
+        case ">":
+            return try lexGreater()
 
         case "&":
-            return lexAmpersandOperator(
-                location: location
-            )
+            return try lexAmpersand()
 
         case "|":
-            return lexPipeOperator(
-                location: location
-            )
+            return try lexPipe()
 
         case "^":
-            advance()
-
-            return makeToken(
-                .caret,
-                "^",
-                location
+            return makeSingleCharacterToken(
+                .caret
             )
 
         default:
-            throw LexerError.unexpectedCharacter(
+            throw LexerError.invalidCharacter(
                 character: character,
                 location: location
             )
@@ -247,362 +216,243 @@ final class Lexer {
 
     // MARK: - Identifiers
 
-    private func lexIdentifierOrKeyword(
-        location: SourceLocation
-    ) -> Token {
+    private func lexIdentifierOrKeyword() -> Token {
+        let location = currentLocation
+        let start = index
 
-        var lexeme = ""
+        advance()
 
-        while !isAtEnd {
-
-            let character = current
-
-            guard isIdentifierContinue(character) else {
-                break
-            }
-
-            lexeme.append(
-                advance()
-            )
+        while !isAtEnd && isIdentifierContinue(currentCharacter) {
+            advance()
         }
 
-        if let keyword = keywordKind(
-            for: lexeme
-        ) {
-            return makeToken(
-                keyword,
-                lexeme,
-                location
-            )
-        }
+        let lexeme = substring(from: start, to: index)
 
-        return makeToken(
-            .identifier,
-            lexeme,
-            location
+        let kind = Self.keywords[lexeme] ?? .identifier
+
+        return Token(
+            kind: kind,
+            lexeme: lexeme,
+            location: location
         )
-    }
-
-    private func keywordKind(
-        for lexeme: String
-    ) -> TokenKind? {
-
-        switch lexeme {
-
-        // Declarations
-
-        case "let":
-            return .letKeyword
-
-        case "var":
-            return .varKeyword
-
-        case "func":
-            return .funcKeyword
-
-        case "struct":
-            return .structKeyword
-
-        case "class":
-            return .classKeyword
-
-        case "enum":
-            return .enumKeyword
-
-        case "protocol":
-            return .protocolKeyword
-
-        case "extension":
-            return .extensionKeyword
-
-        // Modifiers
-
-        case "public":
-            return .publicKeyword
-
-        case "private":
-            return .privateKeyword
-
-        case "internal":
-            return .internalKeyword
-
-        case "static":
-            return .staticKeyword
-
-        case "mutating":
-            return .mutatingKeyword
-
-        case "unsafe":
-            return .unsafeKeyword
-
-        // Statements
-
-        case "return":
-            return .returnKeyword
-
-        case "if":
-            return .ifKeyword
-
-        case "else":
-            return .elseKeyword
-
-        case "while":
-            return .whileKeyword
-
-        case "for":
-            return .forKeyword
-
-        case "in":
-            return .inKeyword
-
-        case "break":
-            return .breakKeyword
-
-        case "continue":
-            return .continueKeyword
-
-        case "switch":
-            return .switchKeyword
-
-        case "case":
-            return .caseKeyword
-
-        case "default":
-            return .defaultKeyword
-
-        // Boolean literals
-
-        case "true":
-            return .booleanLiteral
-
-        case "false":
-            return .booleanLiteral
-
-        // Built-in types
-
-        case "Int":
-            return .intKeyword
-
-        case "UInt":
-            return .uintKeyword
-
-        case "Int8":
-            return .int8Keyword
-
-        case "Int16":
-            return .int16Keyword
-
-        case "Int32":
-            return .int32Keyword
-
-        case "Int64":
-            return .int64Keyword
-
-        case "UInt8":
-            return .uint8Keyword
-
-        case "UInt16":
-            return .uint16Keyword
-
-        case "UInt32":
-            return .uint32Keyword
-
-        case "UInt64":
-            return .uint64Keyword
-
-        case "Float":
-            return .floatKeyword
-
-        case "Double":
-            return .doubleKeyword
-
-        case "Bool":
-            return .boolKeyword
-
-        case "String":
-            return .stringKeyword
-
-        case "Void":
-            return .voidKeyword
-
-        default:
-            return nil
-        }
     }
 
     // MARK: - Numbers
 
-    private func lexNumber(
-        location: SourceLocation
-    ) throws -> Token {
+    private func lexNumber() throws -> Token {
+        let location = currentLocation
+        let start = index
 
-        var lexeme = ""
+        var hasDecimalPoint = false
+        var hasExponent = false
 
-        // Integer portion.
+        if currentCharacter == "0" {
+            advance()
 
-        while !isAtEnd,
-              current.isNumber {
-
-            lexeme.append(
-                advance()
-            )
-        }
-
-        var isFloatingPoint = false
-
-        // Decimal point.
-
-        if !isAtEnd,
-           current == ".",
-           peekIsNumber() {
-
-            isFloatingPoint = true
-
-            lexeme.append(
-                advance()
-            )
-
-            while !isAtEnd,
-                  current.isNumber {
-
-                lexeme.append(
+            if !isAtEnd {
+                switch currentCharacter {
+                case "x", "X":
                     advance()
-                )
+
+                    guard isHexDigit(currentCharacter) else {
+                        let lexeme = substring(
+                            from: start,
+                            to: index
+                        )
+
+                        throw LexerError.invalidNumber(
+                            lexeme: lexeme,
+                            location: location
+                        )
+                    }
+
+                    while !isAtEnd && isHexDigit(currentCharacter) {
+                        advance()
+                    }
+
+                    return Token(
+                        kind: .integerLiteral,
+                        lexeme: substring(
+                            from: start,
+                            to: index
+                        ),
+                        location: location
+                    )
+
+                case "b", "B":
+                    advance()
+
+                    guard currentCharacter == "0" || currentCharacter == "1" else {
+                        let lexeme = substring(
+                            from: start,
+                            to: index
+                        )
+
+                        throw LexerError.invalidNumber(
+                            lexeme: lexeme,
+                            location: location
+                        )
+                    }
+
+                    while !isAtEnd &&
+                          (currentCharacter == "0" ||
+                           currentCharacter == "1") {
+                        advance()
+                    }
+
+                    return Token(
+                        kind: .integerLiteral,
+                        lexeme: substring(
+                            from: start,
+                            to: index
+                        ),
+                        location: location
+                    )
+
+                case "o", "O":
+                    advance()
+
+                    guard isOctalDigit(currentCharacter) else {
+                        let lexeme = substring(
+                            from: start,
+                            to: index
+                        )
+
+                        throw LexerError.invalidNumber(
+                            lexeme: lexeme,
+                            location: location
+                        )
+                    }
+
+                    while !isAtEnd && isOctalDigit(currentCharacter) {
+                        advance()
+                    }
+
+                    return Token(
+                        kind: .integerLiteral,
+                        lexeme: substring(
+                            from: start,
+                            to: index
+                        ),
+                        location: location
+                    )
+
+                default:
+                    break
+                }
+            }
+        } else {
+            while !isAtEnd && isASCIIDigit(currentCharacter) {
+                advance()
             }
         }
 
-        // Exponent.
+        if !isAtEnd && currentCharacter == "." {
+            hasDecimalPoint = true
+            advance()
 
-        if !isAtEnd,
-           current == "e" || current == "E" {
-
-            isFloatingPoint = true
-
-            lexeme.append(
+            while !isAtEnd && isASCIIDigit(currentCharacter) {
                 advance()
-            )
+            }
+        }
 
-            if !isAtEnd,
-               current == "+" || current == "-" {
+        if !isAtEnd &&
+           (currentCharacter == "e" || currentCharacter == "E") {
+            hasExponent = true
+            advance()
 
-                lexeme.append(
-                    advance()
-                )
+            if !isAtEnd &&
+               (currentCharacter == "+" || currentCharacter == "-") {
+                advance()
             }
 
-            guard !isAtEnd,
-                  current.isNumber else {
+            guard !isAtEnd && isASCIIDigit(currentCharacter) else {
+                let lexeme = substring(
+                    from: start,
+                    to: index
+                )
 
-                throw LexerError.invalidFloatingLiteral(
+                throw LexerError.invalidNumber(
                     lexeme: lexeme,
                     location: location
                 )
             }
 
-            while !isAtEnd,
-                  current.isNumber {
-
-                lexeme.append(
-                    advance()
-                )
+            while !isAtEnd && isASCIIDigit(currentCharacter) {
+                advance()
             }
         }
 
-        // A number immediately followed by an identifier
-        // is not a valid numeric literal.
-
-        if !isAtEnd,
-           isIdentifierStart(current) {
-
-            while !isAtEnd,
-                  isIdentifierContinue(current) {
-
-                lexeme.append(
-                    advance()
-                )
+        // A number cannot be immediately followed by an identifier.
+        if !isAtEnd && isIdentifierStart(currentCharacter) {
+            while !isAtEnd && isIdentifierContinue(currentCharacter) {
+                advance()
             }
 
-            if isFloatingPoint {
-                throw LexerError.invalidFloatingLiteral(
-                    lexeme: lexeme,
-                    location: location
-                )
-            }
-
-            throw LexerError.invalidIntegerLiteral(
-                lexeme: lexeme,
+            throw LexerError.invalidNumber(
+                lexeme: substring(
+                    from: start,
+                    to: index
+                ),
                 location: location
             )
         }
 
-        if isFloatingPoint {
+        let lexeme = substring(
+            from: start,
+            to: index
+        )
 
-            return makeToken(
-                .floatingLiteral,
-                lexeme,
-                location
-            )
-        }
-
-        return makeToken(
-            .integerLiteral,
-            lexeme,
-            location
+        return Token(
+            kind: hasDecimalPoint || hasExponent
+                ? .floatingLiteral
+                : .integerLiteral,
+            lexeme: lexeme,
+            location: location
         )
     }
 
     // MARK: - Strings
 
-    private func lexStringLiteral(
-        location: SourceLocation
-    ) throws -> Token {
+    private func lexString() throws -> Token {
+        let location = currentLocation
+        let start = index
 
-        var lexeme = ""
-
-        // Opening quote.
-
-        lexeme.append(
-            advance()
-        )
+        advance() // "
 
         while !isAtEnd {
-
-            let character = current
+            let character = currentCharacter
 
             if character == "\"" {
+                advance()
 
-                lexeme.append(
-                    advance()
-                )
-
-                return makeToken(
-                    .stringLiteral,
-                    lexeme,
-                    location
-                )
-            }
-
-            if character == "\n" ||
-               character == "\r" {
-
-                throw LexerError.unterminatedString(
+                return Token(
+                    kind: .stringLiteral,
+                    lexeme: substring(
+                        from: start,
+                        to: index
+                    ),
                     location: location
                 )
             }
 
             if character == "\\" {
+                advance()
 
-                try appendEscape(
-                    to: &lexeme,
-                    location: location
+                try consumeEscape(
+                    location: currentLocation
                 )
 
                 continue
             }
 
-            lexeme.append(
-                advance()
-            )
+            if character == "\n" || character == "\r" {
+                throw LexerError.unterminatedString(
+                    location: location
+                )
+            }
+
+            advance()
         }
 
         throw LexerError.unterminatedString(
@@ -612,17 +462,11 @@ final class Lexer {
 
     // MARK: - Characters
 
-    private func lexCharacterLiteral(
-        location: SourceLocation
-    ) throws -> Token {
+    private func lexCharacter() throws -> Token {
+        let location = currentLocation
+        let start = index
 
-        var lexeme = ""
-
-        // Opening quote.
-
-        lexeme.append(
-            advance()
-        )
+        advance() // '
 
         guard !isAtEnd else {
             throw LexerError.unterminatedCharacter(
@@ -630,115 +474,86 @@ final class Lexer {
             )
         }
 
-        // Character contents.
-
-        if current == "\\" {
-
-            try appendEscape(
-                to: &lexeme,
+        if currentCharacter == "\n" ||
+           currentCharacter == "\r" {
+            throw LexerError.unterminatedCharacter(
                 location: location
-            )
-
-        } else {
-
-            if current == "\n" ||
-               current == "\r" ||
-               current == "'" {
-
-                throw LexerError.invalidCharacterLiteral(
-                    location: location
-                )
-            }
-
-            lexeme.append(
-                advance()
             )
         }
 
-        // Closing quote.
+        if currentCharacter == "\\" {
+            advance()
 
-        guard !isAtEnd,
-              current == "'" else {
+            try consumeEscape(
+                location: currentLocation
+            )
+        } else {
+            advance()
+        }
 
+        guard !isAtEnd && currentCharacter == "'" else {
             throw LexerError.invalidCharacterLiteral(
                 location: location
             )
         }
 
-        lexeme.append(
-            advance()
-        )
+        advance()
 
-        return makeToken(
-            .characterLiteral,
-            lexeme,
-            location
+        return Token(
+            kind: .characterLiteral,
+            lexeme: substring(
+                from: start,
+                to: index
+            ),
+            location: location
         )
     }
 
-    private func appendEscape(
-        to lexeme: inout String,
+    private func consumeEscape(
         location: SourceLocation
     ) throws {
-
-        // Backslash.
-
-        lexeme.append(
-            advance()
-        )
-
         guard !isAtEnd else {
-            throw LexerError.invalidEscapeSequence(
-                sequence: "\\",
+            throw LexerError.invalidEscape(
                 location: location
             )
         }
 
-        let escaped = current
+        switch currentCharacter {
+        case "n", "r", "t",
+             "\\", "\"", "'",
+             "0":
+            advance()
 
-        switch escaped {
+        case "u":
+            advance()
 
-        case "n":
-            lexeme.append(
+            guard !isAtEnd && currentCharacter == "{" else {
+                throw LexerError.invalidEscape(
+                    location: location
+                )
+            }
+
+            advance()
+
+            var digits = 0
+
+            while !isAtEnd && isHexDigit(currentCharacter) {
                 advance()
-            )
+                digits += 1
+            }
 
-        case "r":
-            lexeme.append(
-                advance()
-            )
+            guard digits > 0 &&
+                  !isAtEnd &&
+                  currentCharacter == "}" else {
+                throw LexerError.invalidEscape(
+                    location: location
+                )
+            }
 
-        case "t":
-            lexeme.append(
-                advance()
-            )
-
-        case "0":
-            lexeme.append(
-                advance()
-            )
-
-        case "\\":
-            lexeme.append(
-                advance()
-            )
-
-        case "\"":
-            lexeme.append(
-                advance()
-            )
-
-        case "'":
-            lexeme.append(
-                advance()
-            )
+            advance()
 
         default:
-
-            let sequence = "\\\(escaped)"
-
-            throw LexerError.invalidEscapeSequence(
-                sequence: sequence,
+            throw LexerError.invalidEscape(
                 location: location
             )
         }
@@ -746,303 +561,257 @@ final class Lexer {
 
     // MARK: - Operators
 
-    private func lexEqualOperator(
-        location: SourceLocation
-    ) -> Token {
+    private func lexEqual() throws -> Token {
+        let location = currentLocation
 
         advance()
 
-        if !isAtEnd,
-           current == "=" {
-
-            advance()
-
-            return makeToken(
-                .equalEqual,
-                "==",
-                location
-            )
-        }
-
-        return makeToken(
-            .equal,
-            "=",
-            location
-        )
-    }
-
-    private func lexBangOperator(
-        location: SourceLocation
-    ) -> Token {
-
-        advance()
-
-        if !isAtEnd,
-           current == "=" {
-
-            advance()
-
-            return makeToken(
-                .notEqual,
-                "!=",
-                location
-            )
-        }
-
-        return makeToken(
-            .logicalNot,
-            "!",
-            location
-        )
-    }
-
-    private func lexLessOperator(
-        location: SourceLocation
-    ) -> Token {
-
-        advance()
-
-        if !isAtEnd,
-           current == "=" {
-
-            advance()
-
-            return makeToken(
-                .lessEqual,
-                "<=",
-                location
-            )
-        }
-
-        return makeToken(
-            .less,
-            "<",
-            location
-        )
-    }
-
-    private func lexGreaterOperator(
-        location: SourceLocation
-    ) -> Token {
-
-        advance()
-
-        if !isAtEnd,
-           current == "=" {
-
-            advance()
-
-            return makeToken(
-                .greaterEqual,
-                ">=",
-                location
-            )
-        }
-
-        return makeToken(
-            .greater,
-            ">",
-            location
-        )
-    }
-
-    private func lexPlusOperator(
-        location: SourceLocation
-    ) throws -> Token {
-
-        advance()
-
-        // Shift deliberately does not support ++.
-
-        if !isAtEnd,
-           current == "+" {
-
-            advance()
-
-            throw LexerError.invalidOperator(
-                lexeme: "++",
+        if match("=") {
+            return Token(
+                kind: .equalEqual,
+                lexeme: "==",
                 location: location
             )
         }
 
-        // Shift deliberately does not support +=.
+        return Token(
+            kind: .equal,
+            lexeme: "=",
+            location: location
+        )
+    }
 
-        if !isAtEnd,
-           current == "=" {
+    private func lexPlus() throws -> Token {
+        let location = currentLocation
 
-            advance()
+        advance()
 
-            throw LexerError.invalidOperator(
+        if match("=") {
+            throw LexerError.forbiddenCompoundAssignment(
                 lexeme: "+=",
                 location: location
             )
         }
 
-        return makeToken(
-            .plus,
-            "+",
-            location
-        )
-    }
-
-    private func lexMinusOperator(
-        location: SourceLocation
-    ) throws -> Token {
-
-        advance()
-
-        // Function/type arrow.
-
-        if !isAtEnd,
-           current == ">" {
-
-            advance()
-
-            return makeToken(
-                .arrow,
-                "->",
-                location
-            )
-        }
-
-        // Shift deliberately does not support --.
-
-        if !isAtEnd,
-           current == "-" {
-
-            advance()
-
-            throw LexerError.invalidOperator(
-                lexeme: "--",
+        if match("+") {
+            throw LexerError.forbiddenIncrementOperator(
+                lexeme: "++",
                 location: location
             )
         }
 
-        // Shift deliberately does not support -=.
+        return Token(
+            kind: .plus,
+            lexeme: "+",
+            location: location
+        )
+    }
 
-        if !isAtEnd,
-           current == "=" {
+    private func lexMinus() throws -> Token {
+        let location = currentLocation
 
-            advance()
+        advance()
 
-            throw LexerError.invalidOperator(
+        if match("=") {
+            throw LexerError.forbiddenCompoundAssignment(
                 lexeme: "-=",
                 location: location
             )
         }
 
-        return makeToken(
-            .minus,
-            "-",
-            location
-        )
-    }
-
-    private func lexSingleCharacterOperator(
-        kind: TokenKind,
-        location: SourceLocation
-    ) throws -> Token {
-
-        let character = current
-
-        advance()
-
-        // Shift does not use compound assignment.
-
-        if !isAtEnd,
-           current == "=" {
-
-            advance()
-
-            let lexeme = "\(character)="
-
-            throw LexerError.invalidOperator(
-                lexeme: lexeme,
+        if match("-") {
+            throw LexerError.forbiddenIncrementOperator(
+                lexeme: "--",
                 location: location
             )
         }
 
-        return makeToken(
-            kind,
-            String(character),
-            location
-        )
-    }
-
-    private func lexAmpersandOperator(
-        location: SourceLocation
-    ) -> Token {
-
-        advance()
-
-        if !isAtEnd,
-           current == "&" {
-
-            advance()
-
-            return makeToken(
-                .logicalAnd,
-                "&&",
-                location
+        if match(">") {
+            return Token(
+                kind: .arrow,
+                lexeme: "->",
+                location: location
             )
         }
 
-        return makeToken(
-            .ampersand,
-            "&",
-            location
+        return Token(
+            kind: .minus,
+            lexeme: "-",
+            location: location
         )
     }
 
-    private func lexPipeOperator(
-        location: SourceLocation
-    ) -> Token {
+    private func lexStar() throws -> Token {
+        let location = currentLocation
 
         advance()
 
-        if !isAtEnd,
-           current == "|" {
-
-            advance()
-
-            return makeToken(
-                .logicalOr,
-                "||",
-                location
+        if match("=") {
+            throw LexerError.forbiddenCompoundAssignment(
+                lexeme: "*=",
+                location: location
             )
         }
 
-        return makeToken(
-            .pipe,
-            "|",
-            location
+        return Token(
+            kind: .star,
+            lexeme: "*",
+            location: location
+        )
+    }
+
+    private func lexSlash() throws -> Token {
+        let location = currentLocation
+
+        advance()
+
+        if match("=") {
+            throw LexerError.forbiddenCompoundAssignment(
+                lexeme: "/=",
+                location: location
+            )
+        }
+
+        return Token(
+            kind: .slash,
+            lexeme: "/",
+            location: location
+        )
+    }
+
+    private func lexPercent() throws -> Token {
+        let location = currentLocation
+
+        advance()
+
+        if match("=") {
+            throw LexerError.forbiddenCompoundAssignment(
+                lexeme: "%=",
+                location: location
+            )
+        }
+
+        return Token(
+            kind: .percent,
+            lexeme: "%",
+            location: location
+        )
+    }
+
+    private func lexExclamation() throws -> Token {
+        let location = currentLocation
+
+        advance()
+
+        if match("=") {
+            return Token(
+                kind: .notEqual,
+                lexeme: "!=",
+                location: location
+            )
+        }
+
+        return Token(
+            kind: .logicalNot,
+            lexeme: "!",
+            location: location
+        )
+    }
+
+    private func lexLess() throws -> Token {
+        let location = currentLocation
+
+        advance()
+
+        if match("=") {
+            return Token(
+                kind: .lessEqual,
+                lexeme: "<=",
+                location: location
+            )
+        }
+
+        return Token(
+            kind: .less,
+            lexeme: "<",
+            location: location
+        )
+    }
+
+    private func lexGreater() throws -> Token {
+        let location = currentLocation
+
+        advance()
+
+        if match("=") {
+            return Token(
+                kind: .greaterEqual,
+                lexeme: ">=",
+                location: location
+            )
+        }
+
+        return Token(
+            kind: .greater,
+            lexeme: ">",
+            location: location
+        )
+    }
+
+    private func lexAmpersand() throws -> Token {
+        let location = currentLocation
+
+        advance()
+
+        if match("&") {
+            return Token(
+                kind: .logicalAnd,
+                lexeme: "&&",
+                location: location
+            )
+        }
+
+        return Token(
+            kind: .ampersand,
+            lexeme: "&",
+            location: location
+        )
+    }
+
+    private func lexPipe() throws -> Token {
+        let location = currentLocation
+
+        advance()
+
+        if match("|") {
+            return Token(
+                kind: .logicalOr,
+                lexeme: "||",
+                location: location
+            )
+        }
+
+        return Token(
+            kind: .pipe,
+            lexeme: "|",
+            location: location
         )
     }
 
     // MARK: - Whitespace / Comments
 
     private func skipWhitespaceAndComments() {
-
         while !isAtEnd {
-
-            if current.isWhitespace {
-
+            if isWhitespace(currentCharacter) {
                 advance()
                 continue
             }
 
-            // Shift line comments begin with ';'.
-
-            if current == ";" {
-
-                while !isAtEnd {
-
-                    if current == "\n" ||
-                       current == "\r" {
-
-                        break
-                    }
-
+            // Shift uses ';' for line comments.
+            if currentCharacter == ";" {
+                while !isAtEnd &&
+                      currentCharacter != "\n" &&
+                      currentCharacter != "\r" {
                     advance()
                 }
 
@@ -1053,14 +822,18 @@ final class Lexer {
         }
     }
 
-    // MARK: - Character Helpers
+    // MARK: - Helpers
 
     private var isAtEnd: Bool {
         index >= characters.count
     }
 
-    private var current: Character {
-        characters[index]
+    private var currentCharacter: Character {
+        guard !isAtEnd else {
+            return "\0"
+        }
+
+        return characters[index]
     }
 
     private var currentLocation: SourceLocation {
@@ -1072,75 +845,152 @@ final class Lexer {
 
     @discardableResult
     private func advance() -> Character {
+        guard !isAtEnd else {
+            return "\0"
+        }
 
         let character = characters[index]
-
         index += 1
 
         if character == "\n" {
+            line += 1
+            column = 1
+        } else if character == "\r" {
+            // Handle CRLF as one newline.
+            if !isAtEnd && currentCharacter == "\n" {
+                index += 1
+            }
 
             line += 1
             column = 1
-
         } else {
-
             column += 1
         }
 
         return character
     }
 
-    private func peek(
-        offset: Int = 1
-    ) -> Character? {
-
-        let position = index + offset
-
-        guard position < characters.count else {
-            return nil
-        }
-
-        return characters[position]
-    }
-
-    private func peekIsNumber() -> Bool {
-
-        guard let next = peek() else {
+    @discardableResult
+    private func match(
+        _ expected: Character
+    ) -> Bool {
+        guard !isAtEnd &&
+              currentCharacter == expected else {
             return false
         }
 
-        return next.isNumber
+        advance()
+        return true
+    }
+
+    private func makeSingleCharacterToken(
+        _ kind: TokenKind
+    ) -> Token {
+        let location = currentLocation
+        let character = currentCharacter
+
+        advance()
+
+        return Token(
+            kind: kind,
+            lexeme: String(character),
+            location: location
+        )
+    }
+
+    private func substring(
+        from start: Int,
+        to end: Int
+    ) -> String {
+        String(
+            characters[
+                start..<end
+            ]
+        )
+    }
+
+    // MARK: - Character Classification
+
+    private func isWhitespace(
+        _ character: Character
+    ) -> Bool {
+        character == " " ||
+        character == "\t" ||
+        character == "\n" ||
+        character == "\r" ||
+        character == "\u{000B}" ||
+        character == "\u{000C}"
     }
 
     private func isIdentifierStart(
         _ character: Character
     ) -> Bool {
+        guard let scalar = character.unicodeScalars.first,
+              character.unicodeScalars.count == 1 else {
+            return false
+        }
 
-        character == "_" ||
-        character.isLetter
+        return isASCIIUppercase(scalar.value) ||
+               isASCIILowercase(scalar.value) ||
+               scalar.value == 95
     }
 
     private func isIdentifierContinue(
         _ character: Character
     ) -> Bool {
+        guard let scalar = character.unicodeScalars.first,
+              character.unicodeScalars.count == 1 else {
+            return false
+        }
 
-        character == "_" ||
-        character.isLetter ||
-        character.isNumber
+        return isIdentifierStart(character) ||
+               isASCIIDigit(character)
     }
 
-    // MARK: - Token Creation
+    private func isASCIIDigit(
+        _ character: Character
+    ) -> Bool {
+        guard let value = character.unicodeScalars.first?.value,
+              character.unicodeScalars.count == 1 else {
+            return false
+        }
 
-    private func makeToken(
-        _ kind: TokenKind,
-        _ lexeme: String,
-        _ location: SourceLocation
-    ) -> Token {
+        return value >= 48 && value <= 57
+    }
 
-        Token(
-            kind: kind,
-            lexeme: lexeme,
-            location: location
-        )
+    private func isHexDigit(
+        _ character: Character
+    ) -> Bool {
+        guard let value = character.unicodeScalars.first?.value,
+              character.unicodeScalars.count == 1 else {
+            return false
+        }
+
+        return (value >= 48 && value <= 57) ||
+               (value >= 65 && value <= 70) ||
+               (value >= 97 && value <= 102)
+    }
+
+    private func isOctalDigit(
+        _ character: Character
+    ) -> Bool {
+        guard let value = character.unicodeScalars.first?.value,
+              character.unicodeScalars.count == 1 else {
+            return false
+        }
+
+        return value >= 48 && value <= 55
+    }
+
+    private func isASCIIUppercase(
+        _ value: UInt32
+    ) -> Bool {
+        value >= 65 && value <= 90
+    }
+
+    private func isASCIILowercase(
+        _ value: UInt32
+    ) -> Bool {
+        value >= 97 && value <= 122
     }
 }
