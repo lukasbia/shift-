@@ -2,9 +2,9 @@ import Foundation
 
 extension Parser {
 
-    func parseVariableDeclaration()
-        throws -> VariableDeclaration {
+    // MARK: - Variables
 
+    func parseVariableDeclaration() throws -> VariableDeclaration {
         let keyword = advance()
 
         let mutable: Bool
@@ -39,7 +39,7 @@ extension Parser {
         guard type != nil || initializer != nil else {
             throw error(
                 expected: "type annotation or initializer",
-                message: "a variable must have a type or initializer"
+                message: "a variable declaration requires a type, an initializer, or both"
             )
         }
 
@@ -51,6 +51,8 @@ extension Parser {
             location: keyword.location
         )
     }
+
+    // MARK: - Functions
 
     func parseFunctionDeclaration(
         modifiers: [DeclarationModifier]
@@ -101,48 +103,48 @@ extension Parser {
         )
     }
 
-    private func parseFunctionParameter()
-        throws -> FunctionParameter {
-
+    private func parseFunctionParameter() throws -> FunctionParameter {
         let start = current.location
 
         var externalLabel: String?
+        let name: Identifier
+
+        /*
+         Supported forms:
+
+             value: Int
+             label value: Int
+
+         The parser intentionally does not invent a wildcard `_`
+         parameter because the current lexer/AST do not expose a
+         wildcard identifier node.
+         */
+
+        let first = try parseIdentifier()
 
         if check(.identifier) {
-            let first = try parseIdentifier()
-
-            if check(.identifier) {
-                externalLabel = first.name
-            } else {
-                return FunctionParameter(
-                    externalLabel: nil,
-                    name: first,
-                    type: try parseParameterType(),
-                    location: start
-                )
-            }
+            externalLabel = first.name
+            name = try parseIdentifier()
+        } else {
+            name = first
         }
-
-        let name = try parseIdentifier()
-
-        return FunctionParameter(
-            externalLabel: externalLabel,
-            name: name,
-            type: try parseParameterType(),
-            location: start
-        )
-    }
-
-    private func parseParameterType()
-        throws -> TypeSyntax {
 
         try consume(
             .colon,
             expected: ":"
         )
 
-        return try parseType()
+        let type = try parseType()
+
+        return FunctionParameter(
+            externalLabel: externalLabel,
+            name: name,
+            type: type,
+            location: start
+        )
     }
+
+    // MARK: - Structs
 
     func parseStructDeclaration(
         modifiers: [DeclarationModifier]
@@ -160,13 +162,7 @@ extension Parser {
             expected: "{"
         )
 
-        var members: [Declaration] = []
-
-        while !check(.rightBrace) && !isAtEnd {
-            members.append(
-                try parseDeclaration()
-            )
-        }
+        let members = try parseDeclarationMembers()
 
         try consume(
             .rightBrace,
@@ -179,6 +175,8 @@ extension Parser {
             location: keyword.location
         )
     }
+
+    // MARK: - Classes
 
     func parseClassDeclaration(
         modifiers: [DeclarationModifier]
@@ -196,13 +194,7 @@ extension Parser {
             expected: "{"
         )
 
-        var members: [Declaration] = []
-
-        while !check(.rightBrace) && !isAtEnd {
-            members.append(
-                try parseDeclaration()
-            )
-        }
+        let members = try parseDeclarationMembers()
 
         try consume(
             .rightBrace,
@@ -215,6 +207,8 @@ extension Parser {
             location: keyword.location
         )
     }
+
+    // MARK: - Enums
 
     func parseEnumDeclaration(
         modifiers: [DeclarationModifier]
@@ -241,32 +235,11 @@ extension Parser {
                 expected: "case"
             )
 
-            let caseName = try parseIdentifier()
-
-            var associatedValues: [TypeSyntax] = []
-
-            if match(.leftParenthesis) {
-                if !check(.rightParenthesis) {
-                    repeat {
-                        associatedValues.append(
-                            try parseType()
-                        )
-                    } while match(.comma)
-                }
-
-                try consume(
-                    .rightParenthesis,
-                    expected: ")"
+            repeat {
+                cases.append(
+                    try parseEnumCase()
                 )
-            }
-
-            cases.append(
-                EnumCase(
-                    name: caseName,
-                    associatedValues: associatedValues,
-                    location: caseName.location
-                )
-            )
+            } while match(.comma)
         }
 
         try consume(
@@ -280,6 +253,36 @@ extension Parser {
             location: keyword.location
         )
     }
+
+    private func parseEnumCase() throws -> EnumCase {
+        let name = try parseIdentifier()
+
+        var associatedValues: [TypeSyntax] = []
+
+        if match(.leftParenthesis) {
+
+            if !check(.rightParenthesis) {
+                repeat {
+                    associatedValues.append(
+                        try parseType()
+                    )
+                } while match(.comma)
+            }
+
+            try consume(
+                .rightParenthesis,
+                expected: ")"
+            )
+        }
+
+        return EnumCase(
+            name: name,
+            associatedValues: associatedValues,
+            location: name.location
+        )
+    }
+
+    // MARK: - Protocols
 
     func parseProtocolDeclaration(
         modifiers: [DeclarationModifier]
@@ -297,13 +300,7 @@ extension Parser {
             expected: "{"
         )
 
-        var members: [Declaration] = []
-
-        while !check(.rightBrace) && !isAtEnd {
-            members.append(
-                try parseDeclaration()
-            )
-        }
+        let members = try parseDeclarationMembers()
 
         try consume(
             .rightBrace,
@@ -317,9 +314,9 @@ extension Parser {
         )
     }
 
-    func parseExtensionDeclaration()
-        throws -> ExtensionDeclaration {
+    // MARK: - Extensions
 
+    func parseExtensionDeclaration() throws -> ExtensionDeclaration {
         let keyword = try consume(
             .extensionKeyword,
             expected: "extension"
@@ -332,13 +329,7 @@ extension Parser {
             expected: "{"
         )
 
-        var members: [Declaration] = []
-
-        while !check(.rightBrace) && !isAtEnd {
-            members.append(
-                try parseDeclaration()
-            )
-        }
+        let members = try parseDeclarationMembers()
 
         try consume(
             .rightBrace,
@@ -350,5 +341,26 @@ extension Parser {
             members: members,
             location: keyword.location
         )
+    }
+
+    // MARK: - Declaration Members
+
+    private func parseDeclarationMembers() throws -> [Declaration] {
+        var members: [Declaration] = []
+
+        while !check(.rightBrace) && !isAtEnd {
+            members.append(
+                try parseDeclaration()
+            )
+        }
+
+        if isAtEnd {
+            throw ParserError.unexpectedEndOfFile(
+                expected: "}",
+                location: current.location
+            )
+        }
+
+        return members
     }
 }
