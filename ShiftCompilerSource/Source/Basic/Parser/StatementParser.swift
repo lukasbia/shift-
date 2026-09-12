@@ -2,8 +2,9 @@ import Foundation
 
 extension Parser {
 
-    func parseCodeBlock() throws -> CodeBlock {
+    // MARK: - Blocks
 
+    func parseCodeBlock() throws -> CodeBlock {
         let brace = try consume(
             .leftBrace,
             expected: "{"
@@ -28,8 +29,9 @@ extension Parser {
         )
     }
 
-    func parseStatement() throws -> Statement {
+    // MARK: - Statements
 
+    func parseStatement() throws -> Statement {
         switch current.kind {
 
         case .letKeyword,
@@ -40,34 +42,45 @@ extension Parser {
             )
 
         case .returnKeyword:
+
             return .returnStatement(
                 try parseReturnStatement()
             )
 
         case .ifKeyword:
+
             return .ifStatement(
                 try parseIfStatement()
             )
 
         case .whileKeyword:
+
             return .whileStatement(
                 try parseWhileStatement()
             )
 
         case .forKeyword:
+
             return .forStatement(
                 try parseForStatement()
             )
 
         case .breakKeyword:
             let token = advance()
-            return .breakStatement(token.location)
+
+            return .breakStatement(
+                token.location
+            )
 
         case .continueKeyword:
             let token = advance()
-            return .continueStatement(token.location)
+
+            return .continueStatement(
+                token.location
+            )
 
         case .switchKeyword:
+
             return .switchStatement(
                 try parseSwitchStatement()
             )
@@ -79,10 +92,18 @@ extension Parser {
         }
     }
 
-    private func parseReturnStatement()
-        throws -> ReturnStatement {
+    // MARK: - Return
 
-        let keyword = advance()
+    private func parseReturnStatement() throws -> ReturnStatement {
+        let keyword = try consume(
+            .returnKeyword,
+            expected: "return"
+        )
+
+        /*
+         A return without an expression is legal when the next
+         token closes the current block or the source ends.
+         */
 
         if check(.rightBrace) || isAtEnd {
             return ReturnStatement(
@@ -97,12 +118,16 @@ extension Parser {
         )
     }
 
-    private func parseIfStatement()
-        throws -> IfStatement {
+    // MARK: - If
 
-        let keyword = advance()
+    private func parseIfStatement() throws -> IfStatement {
+        let keyword = try consume(
+            .ifKeyword,
+            expected: "if"
+        )
 
         let condition = try parseExpression()
+
         let body = try parseCodeBlock()
 
         var elseBody: ElseBody?
@@ -128,12 +153,16 @@ extension Parser {
         )
     }
 
-    private func parseWhileStatement()
-        throws -> WhileStatement {
+    // MARK: - While
 
-        let keyword = advance()
+    private func parseWhileStatement() throws -> WhileStatement {
+        let keyword = try consume(
+            .whileKeyword,
+            expected: "while"
+        )
 
         let condition = try parseExpression()
+
         let body = try parseCodeBlock()
 
         return WhileStatement(
@@ -143,10 +172,13 @@ extension Parser {
         )
     }
 
-    private func parseForStatement()
-        throws -> ForStatement {
+    // MARK: - For
 
-        let keyword = advance()
+    private func parseForStatement() throws -> ForStatement {
+        let keyword = try consume(
+            .forKeyword,
+            expected: "for"
+        )
 
         let pattern = try parseIdentifier()
 
@@ -156,6 +188,7 @@ extension Parser {
         )
 
         let sequence = try parseExpression()
+
         let body = try parseCodeBlock()
 
         return ForStatement(
@@ -166,10 +199,13 @@ extension Parser {
         )
     }
 
-    private func parseSwitchStatement()
-        throws -> SwitchStatement {
+    // MARK: - Switch
 
-        let keyword = advance()
+    private func parseSwitchStatement() throws -> SwitchStatement {
+        let keyword = try consume(
+            .switchKeyword,
+            expected: "switch"
+        )
 
         let expression = try parseExpression()
 
@@ -182,76 +218,15 @@ extension Parser {
 
         while !check(.rightBrace) && !isAtEnd {
 
-            if match(.defaultKeyword) {
-
-                try consume(
-                    .colon,
-                    expected: ":"
-                )
-
-                var statements: [Statement] = []
-
-                while !check(.caseKeyword) &&
-                      !check(.rightBrace) &&
-                      !isAtEnd {
-
-                    statements.append(
-                        try parseStatement()
-                    )
-                }
-
+            if check(.defaultKeyword) {
                 cases.append(
-                    SwitchCase(
-                        expressions: [],
-                        statements: statements,
-                        isDefault: true,
-                        location: previous.location
-                    )
+                    try parseDefaultSwitchCase()
                 )
-
-                continue
-            }
-
-            let caseToken = try consume(
-                .caseKeyword,
-                expected: "case"
-            )
-
-            var expressions: [Expression] = [
-                try parseExpression()
-            ]
-
-            while match(.comma) {
-                expressions.append(
-                    try parseExpression()
+            } else {
+                cases.append(
+                    try parseSwitchCase()
                 )
             }
-
-            try consume(
-                .colon,
-                expected: ":"
-            )
-
-            var statements: [Statement] = []
-
-            while !check(.caseKeyword) &&
-                  !check(.defaultKeyword) &&
-                  !check(.rightBrace) &&
-                  !isAtEnd {
-
-                statements.append(
-                    try parseStatement()
-                )
-            }
-
-            cases.append(
-                SwitchCase(
-                    expressions: expressions,
-                    statements: statements,
-                    isDefault: false,
-                    location: caseToken.location
-                )
-            )
         }
 
         try consume(
@@ -259,10 +234,87 @@ extension Parser {
             expected: "}"
         )
 
+        guard !cases.isEmpty else {
+            throw error(
+                expected: "case or default",
+                message: "switch statements must contain at least one case"
+            )
+        }
+
         return SwitchStatement(
             expression: expression,
             cases: cases,
             location: keyword.location
         )
+    }
+
+    private func parseSwitchCase() throws -> SwitchCase {
+        let caseToken = try consume(
+            .caseKeyword,
+            expected: "case"
+        )
+
+        var expressions: [Expression] = []
+
+        expressions.append(
+            try parseExpression()
+        )
+
+        while match(.comma) {
+            expressions.append(
+                try parseExpression()
+            )
+        }
+
+        try consume(
+            .colon,
+            expected: ":"
+        )
+
+        let statements = try parseSwitchCaseStatements()
+
+        return SwitchCase(
+            expressions: expressions,
+            statements: statements,
+            isDefault: false,
+            location: caseToken.location
+        )
+    }
+
+    private func parseDefaultSwitchCase() throws -> SwitchCase {
+        let defaultToken = try consume(
+            .defaultKeyword,
+            expected: "default"
+        )
+
+        try consume(
+            .colon,
+            expected: ":"
+        )
+
+        let statements = try parseSwitchCaseStatements()
+
+        return SwitchCase(
+            expressions: [],
+            statements: statements,
+            isDefault: true,
+            location: defaultToken.location
+        )
+    }
+
+    private func parseSwitchCaseStatements() throws -> [Statement] {
+        var statements: [Statement] = []
+
+        while !check(.caseKeyword) &&
+              !check(.defaultKeyword) &&
+              !check(.rightBrace) &&
+              !isAtEnd {
+
+            statements.append(
+                try parseStatement()
+            )
+        }
+
+        return statements
     }
 }
