@@ -2,31 +2,33 @@ import Foundation
 
 extension Parser {
 
+    // MARK: - Entry Point
+
     func parseExpression() throws -> Expression {
         try parseAssignment()
     }
 
-    private func parseAssignment()
-        throws -> Expression {
+    // MARK: - Assignment
 
+    private func parseAssignment() throws -> Expression {
         let left = try parseLogicalOr()
 
-        if match(.equal) {
-            let value = try parseAssignment()
-
-            return .assignment(
-                left,
-                value,
-                left.location
-            )
+        guard match(.equal) else {
+            return left
         }
 
-        return left
+        let value = try parseAssignment()
+
+        return .assignment(
+            left,
+            value,
+            left.location
+        )
     }
 
-    private func parseLogicalOr()
-        throws -> Expression {
+    // MARK: - Logical OR
 
+    private func parseLogicalOr() throws -> Expression {
         var expression = try parseLogicalAnd()
 
         while match(.logicalOr) {
@@ -43,9 +45,9 @@ extension Parser {
         return expression
     }
 
-    private func parseLogicalAnd()
-        throws -> Expression {
+    // MARK: - Logical AND
 
+    private func parseLogicalAnd() throws -> Expression {
         var expression = try parseBitwiseOr()
 
         while match(.logicalAnd) {
@@ -62,9 +64,9 @@ extension Parser {
         return expression
     }
 
-    private func parseBitwiseOr()
-        throws -> Expression {
+    // MARK: - Bitwise OR
 
+    private func parseBitwiseOr() throws -> Expression {
         var expression = try parseBitwiseXor()
 
         while match(.pipe) {
@@ -81,9 +83,9 @@ extension Parser {
         return expression
     }
 
-    private func parseBitwiseXor()
-        throws -> Expression {
+    // MARK: - Bitwise XOR
 
+    private func parseBitwiseXor() throws -> Expression {
         var expression = try parseBitwiseAnd()
 
         while match(.caret) {
@@ -100,9 +102,9 @@ extension Parser {
         return expression
     }
 
-    private func parseBitwiseAnd()
-        throws -> Expression {
+    // MARK: - Bitwise AND
 
+    private func parseBitwiseAnd() throws -> Expression {
         var expression = try parseEquality()
 
         while match(.ampersand) {
@@ -119,9 +121,9 @@ extension Parser {
         return expression
     }
 
-    private func parseEquality()
-        throws -> Expression {
+    // MARK: - Equality
 
+    private func parseEquality() throws -> Expression {
         var expression = try parseComparison()
 
         while true {
@@ -136,7 +138,10 @@ extension Parser {
                     expression.location
                 )
 
-            } else if match(.notEqual) {
+                continue
+            }
+
+            if match(.notEqual) {
                 let right = try parseComparison()
 
                 expression = .binary(
@@ -146,17 +151,18 @@ extension Parser {
                     expression.location
                 )
 
-            } else {
-                break
+                continue
             }
+
+            break
         }
 
         return expression
     }
 
-    private func parseComparison()
-        throws -> Expression {
+    // MARK: - Comparison
 
+    private func parseComparison() throws -> Expression {
         var expression = try parseAddition()
 
         while true {
@@ -200,15 +206,14 @@ extension Parser {
         return expression
     }
 
-    private func parseAddition()
-        throws -> Expression {
+    // MARK: - Addition
 
+    private func parseAddition() throws -> Expression {
         var expression = try parseMultiplication()
 
         while true {
 
             if match(.plus) {
-
                 let right = try parseMultiplication()
 
                 expression = .binary(
@@ -218,8 +223,10 @@ extension Parser {
                     expression.location
                 )
 
-            } else if match(.minus) {
+                continue
+            }
 
+            if match(.minus) {
                 let right = try parseMultiplication()
 
                 expression = .binary(
@@ -229,23 +236,23 @@ extension Parser {
                     expression.location
                 )
 
-            } else {
-                break
+                continue
             }
+
+            break
         }
 
         return expression
     }
 
-    private func parseMultiplication()
-        throws -> Expression {
+    // MARK: - Multiplication
 
+    private func parseMultiplication() throws -> Expression {
         var expression = try parseUnary()
 
         while true {
 
             if match(.star) {
-
                 let right = try parseUnary()
 
                 expression = .binary(
@@ -255,8 +262,10 @@ extension Parser {
                     expression.location
                 )
 
-            } else if match(.slash) {
+                continue
+            }
 
+            if match(.slash) {
                 let right = try parseUnary()
 
                 expression = .binary(
@@ -266,8 +275,10 @@ extension Parser {
                     expression.location
                 )
 
-            } else if match(.percent) {
+                continue
+            }
 
+            if match(.percent) {
                 let right = try parseUnary()
 
                 expression = .binary(
@@ -277,17 +288,18 @@ extension Parser {
                     expression.location
                 )
 
-            } else {
-                break
+                continue
             }
+
+            break
         }
 
         return expression
     }
 
-    private func parseUnary()
-        throws -> Expression {
+    // MARK: - Unary
 
+    private func parseUnary() throws -> Expression {
         let location = current.location
 
         if match(.plus) {
@@ -333,67 +345,23 @@ extension Parser {
         return try parsePostfix()
     }
 
-    private func parsePostfix()
-        throws -> Expression {
+    // MARK: - Postfix
 
+    private func parsePostfix() throws -> Expression {
         var expression = try parsePrimary()
 
         while true {
 
+            // Function call
             if match(.leftParenthesis) {
-
-                var arguments: [CallArgument] = []
-
-                if !check(.rightParenthesis) {
-
-                    repeat {
-
-                        let argumentLocation =
-                            current.location
-
-                        var label: String?
-
-                        if check(.identifier) &&
-                           peekNextKind() == .colon {
-
-                            label = advance().lexeme
-
-                            _ = try consume(
-                                .colon,
-                                expected: ":"
-                            )
-                        }
-
-                        let argument =
-                            try parseExpression()
-
-                        arguments.append(
-                            CallArgument(
-                                label: label,
-                                expression: argument,
-                                location: argumentLocation
-                            )
-                        )
-
-                    } while match(.comma)
-                }
-
-                try consume(
-                    .rightParenthesis,
-                    expected: ")"
+                expression = try finishCall(
+                    callee: expression
                 )
-
-                expression = .call(
-                    expression,
-                    arguments,
-                    expression.location
-                )
-
                 continue
             }
 
+            // Member access
             if match(.dot) {
-
                 let member = try parseIdentifier()
 
                 expression = .member(
@@ -405,29 +373,11 @@ extension Parser {
                 continue
             }
 
+            // Subscript
             if match(.leftBracket) {
-
-                var indices: [Expression] = []
-
-                if !check(.rightBracket) {
-                    repeat {
-                        indices.append(
-                            try parseExpression()
-                        )
-                    } while match(.comma)
-                }
-
-                try consume(
-                    .rightBracket,
-                    expected: "]"
+                expression = try finishSubscript(
+                    base: expression
                 )
-
-                expression = .subscriptExpression(
-                    expression,
-                    indices,
-                    expression.location
-                )
-
                 continue
             }
 
@@ -437,9 +387,92 @@ extension Parser {
         return expression
     }
 
-    private func parsePrimary()
-        throws -> Expression {
+    private func finishCall(
+        callee: Expression
+    ) throws -> Expression {
 
+        var arguments: [CallArgument] = []
+
+        if !check(.rightParenthesis) {
+
+            repeat {
+                arguments.append(
+                    try parseCallArgument()
+                )
+            } while match(.comma)
+        }
+
+        try consume(
+            .rightParenthesis,
+            expected: ")"
+        )
+
+        return .call(
+            callee,
+            arguments,
+            callee.location
+        )
+    }
+
+    private func parseCallArgument() throws -> CallArgument {
+        let location = current.location
+
+        var label: String?
+
+        /*
+         label: expression
+         */
+
+        if check(.identifier) &&
+           peekKind() == .colon {
+
+            label = advance().lexeme
+
+            try consume(
+                .colon,
+                expected: ":"
+            )
+        }
+
+        let expression = try parseExpression()
+
+        return CallArgument(
+            label: label,
+            expression: expression,
+            location: location
+        )
+    }
+
+    private func finishSubscript(
+        base: Expression
+    ) throws -> Expression {
+
+        var indices: [Expression] = []
+
+        if !check(.rightBracket) {
+
+            repeat {
+                indices.append(
+                    try parseExpression()
+                )
+            } while match(.comma)
+        }
+
+        try consume(
+            .rightBracket,
+            expected: "]"
+        )
+
+        return .subscriptExpression(
+            base,
+            indices,
+            base.location
+        )
+    }
+
+    // MARK: - Primary
+
+    private func parsePrimary() throws -> Expression {
         let token = current
 
         switch token.kind {
@@ -495,17 +528,21 @@ extension Parser {
             )
 
         case .leftParenthesis:
-            return try parseParenthesizedExpression()
+            return try parseParenthesizedOrTupleExpression()
 
         case .leftBracket:
             return try parseArrayLiteral()
 
         default:
-            throw ParserError.invalidExpression(token)
+            throw ParserError.invalidExpression(
+                token
+            )
         }
     }
 
-    private func parseParenthesizedExpression()
+    // MARK: - Parenthesized / Tuple
+
+    private func parseParenthesizedOrTupleExpression()
         throws -> Expression {
 
         let location = try consume(
@@ -513,15 +550,28 @@ extension Parser {
             expected: "("
         ).location
 
+        if check(.rightParenthesis) {
+            try consume(
+                .rightParenthesis,
+                expected: ")"
+            )
+
+            return .tuple(
+                [],
+                location
+            )
+        }
+
         var expressions: [Expression] = []
 
-        if !check(.rightParenthesis) {
+        expressions.append(
+            try parseExpression()
+        )
 
-            repeat {
-                expressions.append(
-                    try parseExpression()
-                )
-            } while match(.comma)
+        while match(.comma) {
+            expressions.append(
+                try parseExpression()
+            )
         }
 
         try consume(
@@ -542,9 +592,9 @@ extension Parser {
         )
     }
 
-    private func parseArrayLiteral()
-        throws -> Expression {
+    // MARK: - Arrays
 
+    private func parseArrayLiteral() throws -> Expression {
         let location = try consume(
             .leftBracket,
             expected: "["
@@ -570,16 +620,5 @@ extension Parser {
             elements,
             location
         )
-    }
-
-    private func peekNextKind() -> TokenKind {
-
-        let next = index + 1
-
-        guard next < tokens.count else {
-            return .endOfFile
-        }
-
-        return tokens[next].kind
     }
 }
