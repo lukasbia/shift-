@@ -9,16 +9,14 @@ final class Parser {
         self.tokens = tokens
     }
 
-    // MARK: Entry Point
+    // MARK: - Entry Point
 
     func parse() throws -> SourceFile {
         let location = current.location
         var declarations: [Declaration] = []
 
         while !isAtEnd {
-            declarations.append(
-                try parseDeclaration()
-            )
+            declarations.append(try parseDeclaration())
         }
 
         return SourceFile(
@@ -27,19 +25,18 @@ final class Parser {
         )
     }
 
-    // MARK: Declaration Parsing
+    // MARK: - Declarations
 
     fileprivate func parseDeclaration() throws -> Declaration {
         let modifiers = try parseModifiers()
 
         switch current.kind {
 
-        case .letKeyword,
-             .varKeyword:
+        case .letKeyword, .varKeyword:
             guard modifiers.isEmpty else {
                 throw error(
                     expected: "declaration",
-                    message: "variable declarations cannot have these modifiers"
+                    message: "variable declarations cannot have declaration modifiers"
                 )
             }
 
@@ -83,6 +80,13 @@ final class Parser {
             )
 
         case .extensionKeyword:
+            guard modifiers.isEmpty else {
+                throw error(
+                    expected: "extension",
+                    message: "extension declarations cannot have declaration modifiers"
+                )
+            }
+
             return .extensionDecl(
                 try parseExtensionDeclaration()
             )
@@ -90,23 +94,101 @@ final class Parser {
         default:
             throw error(
                 expected: "declaration",
-                message: "unexpected token"
+                message: "unexpected token '\(current.lexeme)'"
             )
         }
     }
 
-    // MARK: Helpers
+    // MARK: - Modifiers
+
+    fileprivate func parseModifiers() throws -> [DeclarationModifier] {
+        var modifiers: [DeclarationModifier] = []
+
+        while true {
+            let modifier: DeclarationModifier?
+
+            switch current.kind {
+            case .publicKeyword:
+                advance()
+                modifier = .public
+
+            case .privateKeyword:
+                advance()
+                modifier = .private
+
+            case .internalKeyword:
+                advance()
+                modifier = .internal
+
+            case .staticKeyword:
+                advance()
+                modifier = .static
+
+            case .mutatingKeyword:
+                advance()
+                modifier = .mutating
+
+            case .unsafeKeyword:
+                advance()
+                modifier = .unsafe
+
+            default:
+                modifier = nil
+            }
+
+            guard let modifier else {
+                break
+            }
+
+            if modifiers.contains(where: {
+                String(describing: $0) == String(describing: modifier)
+            }) {
+                throw error(
+                    expected: "unique declaration modifier",
+                    message: "duplicate declaration modifier"
+                )
+            }
+
+            modifiers.append(modifier)
+        }
+
+        return modifiers
+    }
+
+    // MARK: - Token Navigation
 
     fileprivate var current: Token {
-        tokens[min(index, tokens.count - 1)]
+        guard !tokens.isEmpty else {
+            fatalError("Parser requires an EOF token")
+        }
+
+        return tokens[min(index, tokens.count - 1)]
     }
 
     fileprivate var previous: Token {
-        tokens[max(index - 1, 0)]
+        guard !tokens.isEmpty else {
+            fatalError("Parser requires an EOF token")
+        }
+
+        return tokens[max(index - 1, 0)]
     }
 
     fileprivate var isAtEnd: Bool {
         current.kind == .endOfFile
+    }
+
+    fileprivate func peek(_ distance: Int = 1) -> Token {
+        let position = index + distance
+
+        guard position < tokens.count else {
+            return tokens[tokens.count - 1]
+        }
+
+        return tokens[position]
+    }
+
+    fileprivate func peekKind(_ distance: Int = 1) -> TokenKind {
+        peek(distance).kind
     }
 
     @discardableResult
@@ -120,10 +202,12 @@ final class Parser {
         return token
     }
 
-    fileprivate func check(
-        _ kind: TokenKind
-    ) -> Bool {
+    fileprivate func check(_ kind: TokenKind) -> Bool {
         current.kind == kind
+    }
+
+    fileprivate func checkAny(_ kinds: TokenKind...) -> Bool {
+        kinds.contains(current.kind)
     }
 
     @discardableResult
@@ -140,18 +224,14 @@ final class Parser {
                 )
             }
 
-            throw error(
-                expected: expected
-            )
+            throw error(expected: expected)
         }
 
         return advance()
     }
 
-    fileprivate func match(
-        _ kind: TokenKind
-    ) -> Bool {
-
+    @discardableResult
+    fileprivate func match(_ kind: TokenKind) -> Bool {
         guard check(kind) else {
             return false
         }
@@ -160,55 +240,17 @@ final class Parser {
         return true
     }
 
-    fileprivate func error(
-        expected: String,
-        message: String? = nil
-    ) -> ParserError {
-
-        .unexpectedToken(
-            expected: expected,
-            actual: current,
-            message: message
-        )
-    }
-
-    fileprivate func parseModifiers()
-        throws -> [DeclarationModifier] {
-
-        var modifiers: [DeclarationModifier] = []
-
-        while true {
-            switch current.kind {
-
-            case .publicKeyword:
-                advance()
-                modifiers.append(.public)
-
-            case .privateKeyword:
-                advance()
-                modifiers.append(.private)
-
-            case .internalKeyword:
-                advance()
-                modifiers.append(.internal)
-
-            case .staticKeyword:
-                advance()
-                modifiers.append(.static)
-
-            case .mutatingKeyword:
-                advance()
-                modifiers.append(.mutating)
-
-            case .unsafeKeyword:
-                advance()
-                modifiers.append(.unsafe)
-
-            default:
-                return modifiers
-            }
+    @discardableResult
+    fileprivate func matchAny(_ kinds: TokenKind...) -> Bool {
+        guard kinds.contains(current.kind) else {
+            return false
         }
+
+        advance()
+        return true
     }
+
+    // MARK: - Identifiers
 
     fileprivate func parseIdentifier() throws -> Identifier {
         guard check(.identifier) else {
@@ -223,5 +265,61 @@ final class Parser {
             name: token.lexeme,
             location: token.location
         )
+    }
+
+    // MARK: - Errors
+
+    fileprivate func error(
+        expected: String,
+        message: String? = nil
+    ) -> ParserError {
+        .unexpectedToken(
+            expected: expected,
+            actual: current,
+            message: message
+        )
+    }
+
+    // MARK: - Recovery
+
+    /*
+     Shift currently uses throwing parsing rather than collecting
+     multiple diagnostics. These helpers still provide safe recovery
+     points for future diagnostic aggregation.
+     */
+
+    fileprivate func skipUntil(
+        _ kinds: TokenKind...
+    ) {
+        while !isAtEnd && !kinds.contains(current.kind) {
+            advance()
+        }
+    }
+
+    fileprivate func skipBalancedBlock() {
+        guard check(.leftBrace) else {
+            return
+        }
+
+        var depth = 0
+
+        while !isAtEnd {
+            if match(.leftBrace) {
+                depth += 1
+                continue
+            }
+
+            if match(.rightBrace) {
+                depth -= 1
+
+                if depth == 0 {
+                    return
+                }
+
+                continue
+            }
+
+            advance()
+        }
     }
 }
