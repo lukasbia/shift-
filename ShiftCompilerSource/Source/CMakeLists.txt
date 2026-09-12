@@ -1,0 +1,4 @@
+add_subdirectory(AST)
+add_subdirectory(Basic)
+add_subdirectory(Optimizer)
+add_subdirectory(SIL)
