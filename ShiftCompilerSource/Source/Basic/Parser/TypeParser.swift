@@ -2,14 +2,22 @@ import Foundation
 
 extension Parser {
 
-    func parseType() throws -> TypeSyntax {
+    // MARK: - Entry Point
 
+    func parseType() throws -> TypeSyntax {
+        try parseTypePostfix()
+    }
+
+    // MARK: - Postfix Type
+
+    private func parseTypePostfix() throws -> TypeSyntax {
         let location = current.location
 
         var type = try parsePrimaryType()
 
         while true {
 
+            // Array type: T[]
             if match(.leftBracket) {
 
                 try consume(
@@ -25,9 +33,20 @@ extension Parser {
                 continue
             }
 
-            if match(.logicalNot) {
+            /*
+             Pointer type: T*
 
-                type = .optional(
+             This is parsed after the primary type so that:
+
+                 Int*
+                 Int[]*
+                 (Int, Int)*
+
+             remain structurally well-formed.
+             */
+
+            if match(.star) {
+                type = .pointer(
                     type,
                     location
                 )
@@ -35,15 +54,21 @@ extension Parser {
                 continue
             }
 
+            /*
+             The existing lexer/parser contract does not expose a
+             dedicated '?' token. Therefore optional types are not
+             guessed from an unrelated operator token here.
+             */
+
             break
         }
 
         return type
     }
 
-    private func parsePrimaryType()
-        throws -> TypeSyntax {
+    // MARK: - Primary Type
 
+    private func parsePrimaryType() throws -> TypeSyntax {
         let token = current
 
         switch token.kind {
@@ -93,6 +118,8 @@ extension Parser {
         }
     }
 
+    // MARK: - Tuple / Function Types
+
     private func parseTupleOrFunctionType()
         throws -> TypeSyntax {
 
@@ -104,6 +131,7 @@ extension Parser {
         var types: [TypeSyntax] = []
 
         if !check(.rightParenthesis) {
+
             repeat {
                 types.append(
                     try parseType()
