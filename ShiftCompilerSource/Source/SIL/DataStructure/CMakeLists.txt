@@ -1,0 +1,30 @@
+add_library(ShiftSILDataStructures STATIC
+    BasicBlockRange.swift
+    InstructionRange.swift
+    Set.swift
+    Stack.swift
+    Worklist.swift
+    BitSet.swift
+    DenseMap.swift
+    DenseSet.swift
+    OrderedSet.swift
+    SmallVector.swift
+    IndexedList.swift
+    IntrusiveList.swift
+    Graph.swift
+    GraphNode.swift
+    DominatorTree.swift
+    PostOrder.swift
+    ReversePostOrder.swift
+    UseList.swift
+    DefUseChain.swift
+    ValueMap.swift
+    BlockMap.swift
+    InstructionMap.swift
+    SILIndex.swift
+)
+
+target_link_libraries(ShiftSILDataStructures
+    PRIVATE
+    ShiftSIL
+)
