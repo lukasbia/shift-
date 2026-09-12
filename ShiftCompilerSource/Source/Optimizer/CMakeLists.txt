@@ -1,0 +1,40 @@
+add_library(ShiftSILOptimizerAnalysis STATIC
+    SILAnalysis.swift
+    SILAnalysisManager.swift
+    SILAnalysisInvalidation.swift
+    SILAnalysisResult.swift
+    SILCFG.swift
+    CFGAnalysis.swift
+    DominatorTree.swift
+    DominanceAnalysis.swift
+    PostDominatorTree.swift
+    PostDominanceAnalysis.swift
+    ReachabilityAnalysis.swift
+    DeadEndBlocksAnalysis.swift
+    Loop.swift
+    LoopInfo.swift
+    LoopAnalysis.swift
+    BasicCalleeAnalysis.swift
+    FunctionOrder.swift
+    DefUseAnalysis.swift
+    Liveness.swift
+    LivenessAnalysis.swift
+    AliasAnalysis.swift
+    AliasSet.swift
+    MemoryBehavior.swift
+    SideEffectAnalysis.swift
+    ModRef.swift
+    CaptureAnalysis.swift
+    ControlDependence.swift
+    BranchProbability.swift
+    BlockFrequency.swift
+    AnalysisCache.swift
+    AnalysisPipeline.swift
+)
+
+target_link_libraries(ShiftSILOptimizerAnalysis
+    PRIVATE
+    ShiftSIL
+    ShiftSILDataStructures
+    ShiftSILUtilities
+)
