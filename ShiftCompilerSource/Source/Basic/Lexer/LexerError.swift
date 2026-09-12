@@ -1,11 +1,5 @@
-//
-// LexerError.swift
-// Shift
-//
-
-enum LexerError: Error, CustomStringConvertible {
-
-    case unexpectedCharacter(
+public enum LexerError: Error, Equatable, CustomStringConvertible {
+    case invalidCharacter(
         character: Character,
         location: SourceLocation
     )
@@ -18,110 +12,54 @@ enum LexerError: Error, CustomStringConvertible {
         location: SourceLocation
     )
 
+    case invalidEscape(
+        location: SourceLocation
+    )
+
     case invalidCharacterLiteral(
         location: SourceLocation
     )
 
-    case invalidEscapeSequence(
-        sequence: String,
-        location: SourceLocation
-    )
-
-    case invalidIntegerLiteral(
+    case invalidNumber(
         lexeme: String,
         location: SourceLocation
     )
 
-    case invalidFloatingLiteral(
+    case forbiddenCompoundAssignment(
         lexeme: String,
         location: SourceLocation
     )
 
-    case invalidOperator(
+    case forbiddenIncrementOperator(
         lexeme: String,
         location: SourceLocation
     )
 
-    var description: String {
-
+    public var description: String {
         switch self {
+        case let .invalidCharacter(character, location):
+            return "\(location): invalid character '\(character)'"
 
-        case let .unexpectedCharacter(
-            character,
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            unexpected character '\(character)'.
-            """
+        case let .unterminatedString(location):
+            return "\(location): unterminated string literal"
 
-        case let .unterminatedString(
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            unterminated string literal.
-            """
+        case let .unterminatedCharacter(location):
+            return "\(location): unterminated character literal"
 
-        case let .unterminatedCharacter(
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            unterminated character literal.
-            """
+        case let .invalidEscape(location):
+            return "\(location): invalid escape sequence"
 
-        case let .invalidCharacterLiteral(
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            invalid character literal.
-            """
+        case let .invalidCharacterLiteral(location):
+            return "\(location): character literal must contain exactly one character"
 
-        case let .invalidEscapeSequence(
-            sequence,
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            invalid escape sequence '\(sequence)'.
-            """
+        case let .invalidNumber(lexeme, location):
+            return "\(location): invalid numeric literal '\(lexeme)'"
 
-        case let .invalidIntegerLiteral(
-            lexeme,
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            invalid integer literal '\(lexeme)'.
-            """
+        case let .forbiddenCompoundAssignment(lexeme, location):
+            return "\(location): compound assignment '\(lexeme)' is not supported; Shift requires a separate assignment operation"
 
-        case let .invalidFloatingLiteral(
-            lexeme,
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            invalid floating-point literal '\(lexeme)'.
-            """
-
-        case let .invalidOperator(
-            lexeme,
-            location
-        ):
-            return """
-            Lex error at \
-            \(location.line):\(location.column): \
-            operator '\(lexeme)' is not valid in Shift.
-            """
+        case let .forbiddenIncrementOperator(lexeme, location):
+            return "\(location): operator '\(lexeme)' is not supported"
         }
     }
 }
